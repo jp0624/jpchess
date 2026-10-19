@@ -12,7 +12,6 @@ import {
 	createStockfishWorker,
 	stockfishGetBestMove,
 } from "./engine/stockfishWorker";
-import { PIECE_UNICODE } from "./utils/pieceMaps";
 import type { Color } from "./types";
 
 export default function App() {
@@ -45,6 +44,13 @@ export default function App() {
 		};
 	}, []);
 
+	useEffect(() => {
+		const computerColor: Color = playerSide === "w" ? "b" : "w";
+		if (mode !== "vsComputer" || chess.turn() !== computerColor || chess.isGameOver()) return;
+		const timer = window.setTimeout(() => { void handleComputerMove(computerColor); }, 200);
+		return () => window.clearTimeout(timer);
+	}, [mode, difficulty, playerSide, moveHistory.length]);
+
 	function pushHistory(san: string) {
 		setMoveHistory((m) => [...m, san]);
 	}
@@ -61,13 +67,6 @@ export default function App() {
 		setExplain(null);
 		forceRerender((n) => n + 1);
 
-		if (mode === "vsComputer") {
-			const turn = chess.turn();
-			const computerColor: Color = playerSide === "w" ? "b" : "w";
-			if (turn === computerColor && !chess.game_over()) {
-				setTimeout(() => handleComputerMove(computerColor), 200);
-			}
-		}
 	}
 
 	async function handleComputerMove(color: Color) {
@@ -203,7 +202,7 @@ export default function App() {
 		[moveHistory.join(",")]
 	);
 
-	const movesForDisplay = moveHistory.map((m, idx) => `${idx + 1}. ${m}`);
+	const movesForDisplay = moveHistory;
 
 	return (
 		<div
@@ -213,7 +212,7 @@ export default function App() {
 			}
 		>
 			<div className="max-w-6xl mx-auto">
-				<div className="flex gap-6">
+				<div className="flex flex-col lg:flex-row gap-6">
 					<div className="flex gap-4">
 						<div className="flex flex-col items-center gap-3">
 							<div className="flex items-center gap-4">
@@ -224,9 +223,9 @@ export default function App() {
 								<AdvantageBar score={material} />
 							</div>
 
-							<div className="flex gap-4 items-start">
+							<div className="flex flex-wrap gap-4 items-start">
 								<CapturedPieces captured={captured.w} color="w" isTop={true} />
-								<Board chess={chess} onMove={onMove} draggableSide={"both"} />
+								<Board chess={chess} onMove={onMove} draggableSide={mode === "vsComputer" ? playerSide : "both"} />
 								<div className="flex flex-col gap-3">
 									<Controls
 										onNewGame={onNewGame}

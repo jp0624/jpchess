@@ -32,7 +32,6 @@ export function stockfishGetBestMove(
 	return new Promise((resolve) => {
 		if (!worker) return resolve(null);
 
-		const depth = options.depth ?? 8;
 		const movetime = options.movetime ?? 1000;
 
 		let best: string | null = null;

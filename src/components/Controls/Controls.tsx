@@ -1,4 +1,3 @@
-import React from "react";
 
 interface ControlsProps {
 	onNewGame: (mode: "2P" | "1P") => void;
@@ -66,11 +65,12 @@ export default function Controls({
 						<option value="easy">Easy</option>
 						<option value="medium">Medium</option>
 						<option value="hard">Hard</option>
-						<option value="extreme">Extreme (Stockfish)</option>
+						<option value="extreme" disabled>Extreme (engine assets not installed)</option>
 					</select>
 				</div>
 			)}
 
+			<button onClick={onRecommend} className="px-3 py-1 rounded bg-emerald-700 text-white">Recommend move</button>
 			<div className="text-sm">
 				If vs Computer, AI moves automatically after your move.
 			</div>

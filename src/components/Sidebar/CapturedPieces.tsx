@@ -1,4 +1,3 @@
-import React from "react";
 import { PIECE_ICONS_MAP } from "../../utils/pieceMaps";
 
 interface CapturedPiecesProps {

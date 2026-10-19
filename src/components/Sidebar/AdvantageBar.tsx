@@ -1,4 +1,3 @@
-import React from "react";
 
 interface AdvantageBarProps {
 	score: number; // positive => white advantage, negative => black advantage

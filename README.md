@@ -120,3 +120,7 @@ yarn start
 ## License
 
 MIT License
+
+## Deployment repair (October 2026)
+
+Fixed current chess.js API usage, TypeScript errors, Tailwind/PostCSS integration and the missing stylesheet import. Vercel builds `npm run build` into `dist`. AI now responds when the computer plays first, and player dragging is restricted to their side. Extreme/Stockfish is unavailable because the committed WASM is empty and its loader is a placeholder; the option is disabled rather than hanging a game. Easy, medium, hard and local modes remain available.

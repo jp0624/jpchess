@@ -1,4 +1,3 @@
-import React from "react";
 
 interface RecommendationProps {
 	recommended: any | null; // move object from chess.js
