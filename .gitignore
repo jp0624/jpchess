@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Engine assets copied from the pinned npm package at build time
+public/stockfish/stockfish-19-*
+public/stockfish/COPYING.txt

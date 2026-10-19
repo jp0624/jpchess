@@ -65,7 +65,7 @@ export default function Controls({
 						<option value="easy">Easy</option>
 						<option value="medium">Medium</option>
 						<option value="hard">Hard</option>
-						<option value="extreme" disabled>Extreme (engine assets not installed)</option>
+						<option value="extreme">Extreme · Stockfish</option>
 					</select>
 				</div>
 			)}

@@ -1,256 +1,33 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Chess } from "chess.js";
-import Board from "./components/Board/Board";
-import Controls from "./components/Controls/Controls";
-import MoveList from "./components/Sidebar/MoveList";
-import CapturedPieces from "./components/Sidebar/CapturedPieces";
-import Recommendation from "./components/Sidebar/Recommendation";
-import AdvantageBar from "./components/Sidebar/AdvantageBar";
-import { evaluateMaterial } from "./engine/evaluate";
-import { minimaxBestMove } from "./engine/minimax";
-import {
-	createStockfishWorker,
-	stockfishGetBestMove,
-} from "./engine/stockfishWorker";
-import type { Color } from "./types";
-
-export default function App() {
-	const [chess] = useState(() => new Chess());
-	const [, forceRerender] = useState(0);
-	const [playerSide, setPlayerSide] = useState<Color>(() =>
-		Math.random() < 0.5 ? "w" : "b"
-	);
-
-	const [mode, setMode] = useState<"local" | "vsComputer">("local");
-	const [difficulty, setDifficulty] = useState<
-		"easy" | "medium" | "hard" | "extreme"
-	>("medium");
-	const [moveHistory, setMoveHistory] = useState<string[]>([]);
-	const [captured, setCaptured] = useState<{ w: string[]; b: string[] }>({
-		w: [],
-		b: [],
-	});
-	const [recommended, setRecommended] = useState<any | null>(null);
-	const [explain, setExplain] = useState<string | null>(null);
-
-	const stockfishWorkerRef = useRef<Worker | null>(null);
-
-	useEffect(() => {
-		return () => {
-			if (stockfishWorkerRef.current) {
-				stockfishWorkerRef.current.terminate();
-				stockfishWorkerRef.current = null;
-			}
-		};
-	}, []);
-
-	useEffect(() => {
-		const computerColor: Color = playerSide === "w" ? "b" : "w";
-		if (mode !== "vsComputer" || chess.turn() !== computerColor || chess.isGameOver()) return;
-		const timer = window.setTimeout(() => { void handleComputerMove(computerColor); }, 200);
-		return () => window.clearTimeout(timer);
-	}, [mode, difficulty, playerSide, moveHistory.length]);
-
-	function pushHistory(san: string) {
-		setMoveHistory((m) => [...m, san]);
-	}
-
-	function onMove(move: any) {
-		if (!move) return;
-		if (move.captured) {
-			const cap = move.captured.toLowerCase();
-			const color = move.color as Color;
-			setCaptured((c) => ({ ...c, [color]: [...(c as any)[color], cap] }));
-		}
-		pushHistory(move.san ?? `${move.from}-${move.to}`);
-		setRecommended(null);
-		setExplain(null);
-		forceRerender((n) => n + 1);
-
-	}
-
-	async function handleComputerMove(color: Color) {
-		if (difficulty === "easy") {
-			const moves = chess.moves({ verbose: true });
-			if (!moves || moves.length === 0) return;
-			const choice = moves[Math.floor(Math.random() * moves.length)];
-			const m = chess.move({
-				from: choice.from,
-				to: choice.to,
-				promotion: choice.promotion,
-			});
-			if (m) onMove(m);
-			return;
-		}
-
-		if (difficulty === "medium") {
-			const best = recommendMoveOnePly(chess, color);
-			if (!best) return;
-			const m = chess.move({
-				from: best.from,
-				to: best.to,
-				promotion: best.promotion,
-			});
-			if (m) onMove(m);
-			return;
-		}
-
-		if (difficulty === "hard") {
-			const best = minimaxBestMove(chess, color, 2);
-			if (!best) return;
-			const m = chess.move({
-				from: best.from,
-				to: best.to,
-				promotion: best.promotion,
-			});
-			if (m) onMove(m);
-			return;
-		}
-
-		if (difficulty === "extreme") {
-			if (!stockfishWorkerRef.current)
-				stockfishWorkerRef.current = createStockfishWorker();
-			const worker = stockfishWorkerRef.current;
-			const bestUci = await stockfishGetBestMove(worker, chess.fen(), {
-				depth: 12,
-			});
-			if (!bestUci) return;
-			const from = bestUci.substring(0, 2);
-			const to = bestUci.substring(2, 4);
-			const promotion = bestUci.length > 4 ? bestUci[4] : undefined;
-			const m = chess.move({ from, to, promotion: promotion ?? "q" });
-			if (m) onMove(m);
-			return;
-		}
-	}
-
-	function recommendMoveOnePly(chessInst: Chess, color: Color) {
-		const moves = chessInst.moves({ verbose: true });
-		if (!moves || moves.length === 0) return null;
-		let best: any = null;
-		let bestScore = color === "w" ? -Infinity : Infinity;
-		for (const m of moves) {
-			const copy = new Chess(chessInst.fen());
-			copy.move({ from: m.from, to: m.to, promotion: m.promotion });
-			const score = evaluateMaterial(copy);
-			if (color === "w") {
-				if (score > bestScore) {
-					bestScore = score;
-					best = m;
-				}
-			} else {
-				if (score < bestScore) {
-					bestScore = score;
-					best = m;
-				}
-			}
-		}
-		return best;
-	}
-
-	function onNewGame(modeParam: "2P" | "1P") {
-		chess.reset();
-		setCaptured({ w: [], b: [] });
-		setMoveHistory([]);
-		setRecommended(null);
-		setExplain(null);
-		setPlayerSide(Math.random() < 0.5 ? "w" : "b");
-		setMode(modeParam === "1P" ? "vsComputer" : "local");
-		forceRerender((n) => n + 1);
-	}
-
-	function onUndo() {
-		const mv = chess.undo();
-		if (mv && mv.captured) {
-			const key = mv.color === "w" ? "w" : "b";
-			setCaptured((c) => {
-				const arr = [...(c as any)[key]];
-				const idx = arr.lastIndexOf(mv.captured);
-				if (idx >= 0) arr.splice(idx, 1);
-				return { ...c, [key]: arr } as any;
-			});
-		}
-		setMoveHistory((m) => m.slice(0, -1));
-		forceRerender((n) => n + 1);
-	}
-
-	function onRecommend() {
-		const turn = chess.turn() as Color;
-		const best = recommendMoveOnePly(chess, turn);
-		if (!best) {
-			setRecommended({ move: "N/A" });
-			setExplain("No legal moves");
-			return;
-		}
-		const copy = new Chess(chess.fen());
-		copy.move({ from: best.from, to: best.to, promotion: best.promotion });
-		const before = evaluateMaterial(chess);
-		const after = evaluateMaterial(copy);
-		const diff = after - before;
-		const explanation =
-			diff > 0
-				? `Increases White material by ${diff.toFixed(1)}`
-				: diff < 0
-				? `Decreases White material by ${Math.abs(diff).toFixed(1)}`
-				: `Maintains material but may improve position`;
-		setRecommended(best);
-		setExplain(explanation);
-	}
-
-	const material = useMemo(
-		() => evaluateMaterial(chess),
-		[moveHistory.join(",")]
-	);
-
-	const movesForDisplay = moveHistory;
-
-	return (
-		<div
-			className="min-h-screen p-6 bg-gray-50 text-slate-800"
-			style={
-				{ "--green": "#4f7942", "--beige": "#f6f1e6" } as React.CSSProperties
-			}
-		>
-			<div className="max-w-6xl mx-auto">
-				<div className="flex flex-col lg:flex-row gap-6">
-					<div className="flex gap-4">
-						<div className="flex flex-col items-center gap-3">
-							<div className="flex items-center gap-4">
-								<div className="text-sm">
-									You are playing:{" "}
-									<strong>{playerSide === "w" ? "White" : "Black"}</strong>
-								</div>
-								<AdvantageBar score={material} />
-							</div>
-
-							<div className="flex flex-wrap gap-4 items-start">
-								<CapturedPieces captured={captured.w} color="w" isTop={true} />
-								<Board chess={chess} onMove={onMove} draggableSide={mode === "vsComputer" ? playerSide : "both"} />
-								<div className="flex flex-col gap-3">
-									<Controls
-										onNewGame={onNewGame}
-										onUndo={onUndo}
-										onRecommend={onRecommend}
-										mode={mode}
-										setMode={setMode}
-										difficulty={difficulty}
-										setDifficulty={setDifficulty}
-									/>
-									<Recommendation
-										recommended={recommended}
-										explanation={explain}
-									/>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div className="flex flex-col">
-						<div className="font-semibold mb-2">Move history</div>
-						<MoveList moves={movesForDisplay} />
-					</div>
-				</div>
-			</div>
-		</div>
-	);
+import {useEffect,useState} from 'react';
+import {Chess,type Move} from 'chess.js';
+import Board from './components/Board/Board';
+import Piece from './components/Board/Piece';
+import Controls from './components/Controls/Controls';
+import {evaluateMaterial} from './engine/evaluate';
+import {minimaxBestMove} from './engine/minimax';
+import {createStockfishWorker,stockfishGetBestMove} from './engine/stockfishWorker';
+export default function App(){
+ const [chess]=useState(()=>new Chess());const [revision,refresh]=useState(0);
+ const [mode,setMode]=useState<'local'|'vsComputer'>('local');
+ const [side,setSide]=useState<'w'|'b'>('w');
+ const [difficulty,setDifficulty]=useState<'easy'|'medium'|'hard'|'extreme'>('medium');
+ const [hint,setHint]=useState<Move|null>(null);const [error,setError]=useState('');const [thinking,setThinking]=useState(false);
+ function changed(){setHint(null);setError('');refresh(n=>n+1);}
+ function reset(next=mode){chess.reset();setMode(next);changed();}
+ useEffect(()=>{
+  if(mode!=='vsComputer'||chess.turn()===side||chess.isGameOver()){setThinking(false);return;}
+  let cancelled=false;let worker:Worker|null=null;const fen=chess.fen();setThinking(true);
+  const timer=setTimeout(async()=>{try{
+   let best: {from:string;to:string;promotion?:string}|null=null;
+   if(difficulty==='extreme'){worker=createStockfishWorker();const uci=await stockfishGetBestMove(worker,fen);if(uci)best={from:uci.slice(0,2),to:uci.slice(2,4),promotion:uci[4]};}
+   else if(difficulty==='easy'){const moves=chess.moves({verbose:true});best=moves[Math.floor(Math.random()*moves.length)];}
+   else best=minimaxBestMove(chess,chess.turn(),difficulty==='hard'?2:1);
+   if(!cancelled&&chess.fen()===fen&&best){chess.move(best);changed();}
+  }catch(e){if(!cancelled)setError(e instanceof Error?e.message:'Unable to make a computer move.');}finally{worker?.terminate();if(!cancelled)setThinking(false);}},200);
+  return()=>{cancelled=true;clearTimeout(timer);worker?.terminate();};
+ },[revision,mode,side,difficulty,chess]);
+ function undo(){if(!chess.history().length)return;chess.undo();if(mode==='vsComputer'&&chess.turn()!==side&&chess.history().length)chess.undo();changed();}
+ const history=chess.history({verbose:true});const material=evaluateMaterial(chess);
+ const status=chess.isCheckmate()?`Checkmate. ${chess.turn()==='w'?'Black':'White'} wins.`:chess.isStalemate()?'Draw by stalemate.':chess.isThreefoldRepetition()?'Draw by threefold repetition.':chess.isInsufficientMaterial()?'Draw: insufficient material.':chess.isDraw()?'Draw.':`${chess.turn()==='w'?'White':'Black'} to move${chess.isCheck()?' — check':''}.`;
+ return <main className="game-shell"><header><p>PLAY & LEARN</p><h1>JP Chess</h1><p>Play locally with a friend or choose a computer opponent.</p></header><div className="game-layout"><section><p role="status">{status} {thinking?'Computer is thinking…':''}</p><Board key={`${mode}-${side}-${history.length===0?'new':'playing'}`} chess={chess} onMove={changed} draggableSide={mode==='vsComputer'?side:'both'}/><div className="material"><span>Material: {material===0?'even':`${material>0?'White':'Black'} +${Math.abs(material)}`}</span><meter min={-39} max={39} value={material} aria-label="Material balance"/></div>{(['w','b'] as const).map(color=><div className="captures" key={color}><span>Captured by {color==='w'?'White':'Black'}</span>{history.filter(m=>m.color===color&&m.captured).map((m,i)=><div key={i}><Piece piece={{type:m.captured!,color:color==='w'?'b':'w'}}/></div>)}</div>)}</section><aside><Controls onNewGame={m=>reset(m==='1P'?'vsComputer':'local')} onUndo={undo} onRecommend={()=>setHint(chess.isGameOver()?null:minimaxBestMove(chess,chess.turn(),2))} mode={mode} setMode={m=>reset(m)} difficulty={difficulty} setDifficulty={setDifficulty}/>{mode==='vsComputer'&&<label className="side-choice">Play as <select value={side} onChange={e=>{setSide(e.target.value as 'w'|'b');reset();}}><option value="w">White</option><option value="b">Black</option></select></label>}{error&&<p role="alert">{error} <button onClick={()=>refresh(n=>n+1)}>Retry</button></p>}<div className="hint"><h2>Move suggestion</h2><p>{hint?`${hint.san} (${hint.from} to ${hint.to}). Based on a two-ply material search.`:'Choose Recommend move to explore an option.'}</p></div><h2>Move history</h2><ol className="history">{history.filter((_,i)=>i%2===0).map((m,i)=><li key={i}><span>{m.san}</span><span>{history[i*2+1]?.san??''}</span></li>)}</ol></aside></div><footer>Pieces by Cburnett via <a href="https://commons.wikimedia.org/wiki/Category:PNG_chess_pieces/Standard_transparent">Wikimedia Commons</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. Unmodified PNGs. Extreme mode uses <a href="https://github.com/nmrugg/stockfish.js/tree/v19.0.1">Stockfish.js 19.0.1</a> (<a href="/stockfish/COPYING.txt">GPL v3</a>).</footer></main>;
 }

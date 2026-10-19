@@ -1,0 +1,14 @@
+import React from 'react';
+import {afterEach,expect,test} from 'vitest';
+import {render,screen,fireEvent,cleanup} from '@testing-library/react';
+import {Chess} from 'chess.js';
+import App from '../src/ChessApp';
+import Board from '../src/components/Board/Board';
+import {minimaxBestMove} from '../src/engine/minimax';
+afterEach(cleanup);
+const click=(square:string)=>fireEvent.click(screen.getByRole('button',{name:new RegExp('^'+square+'(?: |$)')}));
+test('legal click moves, capture history and undo remain consistent',()=>{render(<App/>);click('e2');click('e4');click('d7');click('d5');click('e4');click('d5');expect(screen.getByRole('status').textContent).toContain('Black to move');expect(screen.getByText('exd5')).toBeTruthy();fireEvent.click(screen.getByText('Undo'));expect(screen.getByRole('status').textContent).toContain('White to move');expect(screen.queryByText('exd5')).toBeNull();});
+test('illegal move leaves position unchanged and reset clears history',()=>{render(<App/>);click('e2');click('e5');expect(screen.getByRole('button',{name:'e2 White p'})).toBeTruthy();click('e2');click('e4');fireEvent.click(screen.getByText('New 2P'));expect(screen.getByRole('button',{name:'e2 White p'})).toBeTruthy();expect(screen.queryByText('e4')).toBeTruthy();});
+test('promotion offers underpromotion and applies selected piece',()=>{const game=new Chess('7k/P7/8/8/8/8/8/7K w - - 0 1');render(<Board chess={game} onMove={()=>{}}/>);click('a7');click('a8');fireEvent.click(screen.getByText('Knight'));expect(game.get('a8')?.type).toBe('n');});
+test('search finds mate without mutating the board',()=>{const game=new Chess('7k/5Q2/6K1/8/8/8/8/8 w - - 0 1');const fen=game.fen();const best=minimaxBestMove(game,'w',2);expect(game.fen()).toBe(fen);game.move(best);expect(game.isCheckmate()).toBe(true);});
+test('checkmate prevents further moves',()=>{render(<App/>);for(const [from,to] of [['f2','f3'],['e7','e5'],['g2','g4'],['d8','h4']]){click(from);click(to);}expect(screen.getByRole('status').textContent).toContain('Checkmate. Black wins.');click('e2');click('e4');expect(screen.getByRole('button',{name:'e2 White p'})).toBeTruthy();});

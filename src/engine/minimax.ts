@@ -13,7 +13,9 @@ export function minimaxBestMove(chess: Chess, colorToMove: Color, depth = 2) {
 	const maximizing = colorToMove === "w";
 
 	function minimax(node: Chess, d: number, maximizingPlayer: boolean): number {
-		if (d === 0) return evaluateMaterial(node);
+		if (node.isCheckmate()) return node.turn() === "w" ? -10000 - d : 10000 + d;
+        if (node.isDraw()) return 0;
+        if (d === 0) return evaluateMaterial(node);
 
 		const moves = node.moves({ verbose: true });
 		if (!moves || moves.length === 0) return evaluateMaterial(node);
